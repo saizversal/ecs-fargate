@@ -30,11 +30,26 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build & Push Docker Image
+      - name: Set IMAGE_TAG and ensure ECR repository exists
         run: |
-          IMAGE_TAG=${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          IMAGE_TAG=$ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+          # Check if ECR repository exists
+          if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "ECR repository does not exist. Creating..."
+            aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }}
+          else
+            echo "ECR repository already exists."
+          fi
+
+      - name: Build Docker image
+        run: |
           docker build -t $IMAGE_TAG .
+
+      - name: Push Docker image to ECR
+        run: |
           docker push $IMAGE_TAG
 
       - name: Deploy CloudFormation stack
@@ -45,26 +60,11 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --region ${{ env.AWS_REGION }}
 
-      - name: Wait for stack to complete
+      - name: Wait for stack deployment to complete
         run: |
-          STATUS=$(aws cloudformation describe-stacks \
+          aws cloudformation wait stack-create-complete \
             --stack-name ${{ env.STACK_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query "Stacks[0].StackStatus" --output text)
-
-          if [[ "$STATUS" == "CREATE_IN_PROGRESS" ]]; then
-            echo "Waiting for stack creation..."
-            aws cloudformation wait stack-create-complete \
-              --stack-name ${{ env.STACK_NAME }} \
-              --region ${{ env.AWS_REGION }}
-          elif [[ "$STATUS" == "UPDATE_IN_PROGRESS" ]]; then
-            echo "Waiting for stack update..."
-            aws cloudformation wait stack-update-complete \
-              --stack-name ${{ env.STACK_NAME }} \
-              --region ${{ env.AWS_REGION }}
-          else
-            echo "Stack status: $STATUS (no wait required)"
-          fi
+            --region ${{ env.AWS_REGION }}
 
       - name: Output API Endpoint URL
         run: |
