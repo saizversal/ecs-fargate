@@ -3,7 +3,7 @@ name: Deploy GraphQL ECS Project
 on:
   push:
     branches:
-      - main  # Or your deployment branch
+      - main
 
 env:
   AWS_REGION: us-east-1
@@ -30,14 +30,11 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build Docker image
+      - name: Build & Push Docker Image
         run: |
           IMAGE_TAG=${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
-          docker build -t $IMAGE_TAG .
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-
-      - name: Push Docker image to ECR
-        run: |
+          docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
 
       - name: Deploy CloudFormation stack
@@ -48,11 +45,26 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --region ${{ env.AWS_REGION }}
 
-      - name: Wait for stack deployment to complete
+      - name: Wait for stack to complete
         run: |
-          aws cloudformation wait stack-create-complete \
+          STATUS=$(aws cloudformation describe-stacks \
             --stack-name ${{ env.STACK_NAME }} \
-            --region ${{ env.AWS_REGION }}
+            --region ${{ env.AWS_REGION }} \
+            --query "Stacks[0].StackStatus" --output text)
+
+          if [[ "$STATUS" == "CREATE_IN_PROGRESS" ]]; then
+            echo "Waiting for stack creation..."
+            aws cloudformation wait stack-create-complete \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }}
+          elif [[ "$STATUS" == "UPDATE_IN_PROGRESS" ]]; then
+            echo "Waiting for stack update..."
+            aws cloudformation wait stack-update-complete \
+              --stack-name ${{ env.STACK_NAME }} \
+              --region ${{ env.AWS_REGION }}
+          else
+            echo "Stack status: $STATUS (no wait required)"
+          fi
 
       - name: Output API Endpoint URL
         run: |
