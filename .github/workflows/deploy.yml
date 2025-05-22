@@ -35,7 +35,6 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           IMAGE_TAG=$ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-
           # Check if ECR repository exists
           if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
             echo "ECR repository does not exist. Creating..."
@@ -52,7 +51,17 @@ jobs:
         run: |
           docker push $IMAGE_TAG
 
-      - name: Deploy CloudFormation stack
+      - name: Check if CloudFormation stack exists
+        id: check_stack
+        run: |
+          if aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy CloudFormation stack if not exists
+        if: steps.check_stack.outputs.exists == 'false'
         run: |
           aws cloudformation deploy \
             --template-file ${{ env.TEMPLATE_FILE }} \
@@ -60,7 +69,8 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --region ${{ env.AWS_REGION }}
 
-      - name: Wait for stack deployment to complete
+      - name: Wait for stack deployment if not exists
+        if: steps.check_stack.outputs.exists == 'false'
         run: |
           aws cloudformation wait stack-create-complete \
             --stack-name ${{ env.STACK_NAME }} \
