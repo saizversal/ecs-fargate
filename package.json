@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "name": "ecs-api-app",
   "version": "1.0.0",
   "main": "index.js",
@@ -7,5 +8,20 @@
   },
   "dependencies": {
     "express": "^4.18.2"
+=======
+  "name": "graphql-ecs",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "apollo-server": "^3.13.0",
+    "graphql": "^16.11.0"
+>>>>>>> 9c020b28084037fdeb3f1f432394e5c8fcdfeb3d
   }
 }
